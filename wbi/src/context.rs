@@ -31,11 +31,11 @@ pub fn this() -> Address {
     Address::default()
 }
 
-lazy_static! {
-    pub static ref msg: Msg = {
-        Msg::new()
-    }; 
+
+pub fn msg() -> Msg  {
+    Msg::new()
 }
+
 
 #[derive(Default)]
 pub struct Msg {

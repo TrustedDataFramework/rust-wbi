@@ -2,6 +2,12 @@
 name = "rust_wbi"
 version = "0.1.0"
 edition = "2018"
+license = "MIT"
+description = "webassembly blockchain interface"
+homepage = "https://github.com/TrustedDataFramework/rust-wbi"
+repository = "https://github.com/TrustedDataFramework/rust-wbi"
+documentation = "https://docs.rs/rust_wbi"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
