@@ -1,0 +1,18 @@
+{
+  "name": "scripts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tdos/js-sdk-v2": "^1.0.4",
+    "@types/node": "^16.3.3",
+    "ts-node": "^10.1.0",
+    "typescript": "^4.3.5",
+    "ethers": "^5.0.32"
+  }
+}
