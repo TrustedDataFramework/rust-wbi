@@ -102,9 +102,15 @@ pub struct U256 {
     data: Vec<u8>,
 }
 
+impl core::fmt::Display for U256 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&to_string(self))
+    }
+}
+
 impl core::fmt::Debug for U256 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(&self.to_string())
+        f.write_str(&to_string(self))
     }
 }
 
@@ -151,26 +157,25 @@ impl PartialOrd for U256 {
 }
 
 
-impl ToString for U256 {
-    fn to_string(&self) -> String {
-        let mut ret = String::new();
+fn to_string(s: &U256) -> String {
+    let mut ret = String::new();
 
-        let base: U256 = 10u64.into();
+    let base: U256 = 10u64.into();
 
-        let mut n = self.clone();
+    let mut n = s.clone();
 
-        if n.is_zero() {
-            return "0".to_string()
-        }
-        while !n.is_zero() {
-            let div = &n / &base;
-            let m = &n % &base;
-            n = div;
-            ret.insert(0, CHARS.as_bytes()[m.u64() as usize] as char);
-        }
-        return ret
+    if n.is_zero() {
+        return "0".to_string()
     }
+    while !n.is_zero() {
+        let div = &n / &base;
+        let m = &n % &base;
+        n = div;
+        ret.insert(0, CHARS.as_bytes()[m.u64() as usize] as char);
+    }
+    return ret
 }
+
 
 // overflow check
 macro_rules! impl_op {
@@ -273,6 +278,12 @@ impl U256 {
         }
     }
 
+    pub fn from_slice(s: &[u8]) -> U256 {
+        U256 {
+            data: trim_zeros!(s)
+        }
+    }
+
     pub fn max() -> U256 {
         U256 {
             data: vec![0xffu8; 32]
@@ -328,6 +339,12 @@ impl U256 {
 
     pub fn data(&self) -> &[u8] {
         &self.data
+    }
+
+    pub fn bytes32(&self) -> Vec<u8> {
+        let mut r: Vec<u8> = vec![0; 32];
+        &r[32 - self.data.len()..].copy_from_slice(self.data());
+        r
     }
 }
 

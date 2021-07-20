@@ -1,3 +1,10 @@
+[workspace]
+members = [
+    "libsm",
+    "wbi",
+    "."
+]
+
 [package]
 name = "foo"
 version = "0.1.0"
@@ -15,7 +22,12 @@ rust_wbi =  { path = "./wbi" }
 # Unfortunately, `wee_alloc` requires nightly Rust when targeting wasm for now.
 wee_alloc = "0.4.5"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"]}
+libsm = { path = "./libsm" }
+
 [dev-dependencies]
+hex = "0.3"
+base64 = "0.13.0"
+
 
 [features]
 

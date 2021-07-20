@@ -111,14 +111,19 @@ macro_rules! use_wbi {
 
 
         extern crate core;  
-        pub use rust_wbi::{__change_t, __malloc, __peek};
-        
+        pub use rust_wbi::{__change_t, __malloc, __peek};     
+    };
+}
+
+#[macro_export]
+macro_rules! impl_panic {
+    () => {                
         #[cfg(target_arch = "wasm32")]
         #[panic_handler]
         fn panic(info: &core::panic::PanicInfo) -> !{
             rust_wbi::log(&format!("{:?}", info));
             unsafe { core::arch::wasm32::unreachable() }
-        }        
+        }      
     };
 }
 
