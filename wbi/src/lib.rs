@@ -7,7 +7,6 @@ extern crate core;
 #[macro_use]
 extern crate lazy_static;
 
-
 const CHARS: [char; 16] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' ];
 const CHARS_INV: &[u8] = &[
     0,0,0,0,    0,0,0,0, // 0x08
@@ -24,6 +23,8 @@ const CHARS_INV: &[u8] = &[
     0,0,0,0,    0,0,0,0, // 0x60
     0,10,11,12, 13,14,15,0 // 0x68
 ];
+
+pub type Bytes32 = Vec<u8>;
 
 pub fn to_hex(data: &[u8]) -> String {
     let mut s = String::with_capacity(data.len() * 2);
@@ -81,9 +82,10 @@ macro_rules! to_vec {
 
 pub mod wbi_type {
     pub const UINT_256: u32 = 0xec13d6d1; // keccak(uint256)
-    pub const ADDRESS: u32 = 0x421683f8; // keccak(address)
-    pub const STRING: u32 = 0x97fc4627; // keccak(string)
-    pub const BYTES: u32 = 0xb963e9b4; // keccak(bytes)
+    pub const ADDRESS: u32 =  0x421683f8; // keccak(address)
+    pub const STRING: u32 =   0x97fc4627; // keccak(string)
+    pub const BYTES: u32 =    0xb963e9b4; // keccak(bytes)
+    pub const BYTES32: u32 =  0x9878dbb4; // keccak(bytes32)
 }
 
 pub mod u256;
@@ -195,7 +197,7 @@ pub unsafe fn __change_t(t: u64, ptr: u64, size: u64) -> u64 {
     // string
     match t as u32 {
         wbi_type::STRING => forget!(String::from_utf8_unchecked(v)),
-        wbi_type::BYTES => forget!(v),
+        wbi_type::BYTES | wbi_type::BYTES32 => forget!(v),
         wbi_type::UINT_256 => forget!(u256::U256::new(v)),
         wbi_type::ADDRESS => forget!(address::Address::new(v)),
         _ => 0
@@ -212,7 +214,7 @@ pub fn __peek(ptr: u64, t: u64) -> u64 {
         return (x << 32) | (y as u64);
     }
 
-    if t == wbi_type::BYTES as u64 {
+    if t == wbi_type::BYTES as u64 || t == wbi_type::BYTES32 as u64 {
         let p: Vec<u8> = remember!(ptr);
         let (x, y) = (p.as_ptr() as u64, p.len());
         mem::forget(p);

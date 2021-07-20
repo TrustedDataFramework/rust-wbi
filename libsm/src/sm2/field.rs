@@ -462,7 +462,7 @@ impl FieldElem {
 mod tests {
     use super::*;
 
-    use rand::{Rng, RngCore, SeedableRng};
+    use rand::{RngCore, SeedableRng};
 
     #[test]
     fn test_add() {
