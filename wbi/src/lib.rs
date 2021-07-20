@@ -29,8 +29,8 @@ pub type Bytes32 = Vec<u8>;
 pub fn to_hex(data: &[u8]) -> String {
     let mut s = String::with_capacity(data.len() * 2);
     for i in data {
-        s.push(CHARS[(i & 0x0f) as usize]);
         s.push(CHARS[((i >> 4) & 0x0f) as usize]);
+        s.push(CHARS[(i & 0x0f) as usize]);
     }
     s
 }

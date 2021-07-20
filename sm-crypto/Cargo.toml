@@ -1,6 +1,6 @@
 [package]
 name = "sm-crypto"
-version = "0.1.0"
+version = "2.2.0"
 authors = ["sal"]
 edition = "2018"
 

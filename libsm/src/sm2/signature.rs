@@ -88,6 +88,14 @@ impl Signature {
     pub fn get_s(&self) -> &BigUint {
         &self.s
     }
+
+    pub fn r_bytes(&self) -> Vec<u8> {
+        self.r.to_bytes_be()
+    }
+
+    pub fn s_bytes(&self) -> Vec<u8> {
+        self.s.to_bytes_be()
+    }
 }
 
 pub struct SigCtx {
