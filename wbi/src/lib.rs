@@ -198,7 +198,7 @@ pub unsafe fn __change_t(t: u64, ptr: u64, size: u64) -> u64 {
     match t as u32 {
         wbi_type::STRING => forget!(String::from_utf8_unchecked(v)),
         wbi_type::BYTES | wbi_type::BYTES32 => forget!(v),
-        wbi_type::UINT_256 => forget!(u256::U256::new(v)),
+        wbi_type::UINT_256 => panic!("change_t by uint256"),
         wbi_type::ADDRESS => forget!(address::Address::new(v)),
         _ => 0
     }
@@ -223,8 +223,9 @@ pub fn __peek(ptr: u64, t: u64) -> u64 {
 
     if t == wbi_type::UINT_256 as u64 {
         let p: u256::U256 = remember!(ptr);
-        let (x, y) = p.__peek();
-        mem::forget(p);
+        let v = p.to_vec();
+        let (x, y) = (v.as_ptr() as u64, v.len());
+        mem::forget(v);
         return (x << 32) | (y as u64);
     }
 
@@ -244,18 +245,21 @@ mod test {
     use crate::{to_hex};
 
     #[test]
-    fn test0() {
-        let u0: U256 = "12345".parse().unwrap();
-        let u1: U256 = "12345".parse().unwrap();
-        println!("{:?}", &u0 * &u1);
-        println!("{:?}", to_hex(u0.data()));
-        let decoded = decode_hex("0123456789abcdefABCDEF");
-        let expected: Vec<u8> = vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xAB, 0xCD, 0xEF];
-        assert_eq!(decoded, expected);
+    fn testx() {
+        let u0: U256 = 129.into();
+        let u1: U256 = 1.into();
+        println!("{:?}", (u0 * &u1).u64());
     }
 
     #[test]
-    fn test1() {
-        println!("{}", super::CHARS_INV[97])
+    fn test0() {
+        let u0: U256 = "12345".parse().unwrap();
+        let u1: U256 = "12345".parse().unwrap();
+        let r: U256 = &u0 * &u1;
+        println!("{:?}", r);
+        println!("{:?}", to_hex(&u0.to_vec()));
+        let decoded = decode_hex("0123456789abcdefABCDEF");
+        let expected: Vec<u8> = vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xAB, 0xCD, 0xEF];
+        assert_eq!(decoded, expected);
     }
 }

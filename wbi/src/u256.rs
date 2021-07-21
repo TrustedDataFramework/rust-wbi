@@ -1,68 +1,117 @@
-macro_rules! trim_zeros {
-    ($slice: ident) => {
-        {
-            let mut i: usize = $slice.len();
+use alloc::string::*;
+use alloc::vec::Vec;
+use core::cmp::{Eq, Ordering, PartialEq, PartialOrd};
+use core::{
+    ops::{Add, Div, Mul, Rem, Sub},
+    str::FromStr,
+};
 
-            for (j, u) in $slice.iter().enumerate() {
-                if *u != 0 {
-                    i = j;
-                    break;
-                } 
-            }
-    
-            let mut v = alloc::vec::Vec::with_capacity($slice.len() - i);
-            v.extend_from_slice(&$slice[i..]);
-            v          
-        }
-    };
+trait ToU256 {
+    fn to_u256(&self) -> [u32; U256_MAGS];
 }
 
-use core::{ops::{Add, Sub, Mul, Div, Rem}, str::FromStr};
-use core::cmp::{PartialEq, Eq, PartialOrd, Ordering};
-use alloc::{vec::Vec};
-use crate::{remember_bytes};
-use alloc::string::*;
+trait AsU256 {
+    fn as_u256(&self) -> &[u32];
+}
+
+impl ToU256 for [u32; U512_MAGS] {
+    fn to_u256(&self) -> [u32; U256_MAGS] {
+        let mut out = ZEROS;
+        out.copy_from_slice(&self[U256_MAGS..]);
+        out
+    }
+}
+
+impl AsU256 for [u32; U512_MAGS] {
+    fn as_u256(&self) -> &[u32] {
+        &self[U256_MAGS..]
+    }
+}
+
+macro_rules! trim_zeros {
+    ($slice: ident) => {{
+        let mut i: usize = $slice.len();
+
+        for (j, u) in $slice.iter().enumerate() {
+            if *u != 0 {
+                i = j;
+                break;
+            }
+        }
+
+        let mut v = alloc::vec::Vec::with_capacity($slice.len() - i);
+        v.extend_from_slice(&$slice[i..]);
+        v
+    }};
+}
+
+const U256_MAGS: usize = 8;
+const U512_MAGS: usize = 16;
+const ZEROS: [u32; U256_MAGS] = [0; U256_MAGS];
+
+const MAX_U256: [u32; U256_MAGS] = [
+    0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+];
 
 const CHARS: &'static str = "0123456789";
 
 extern "C" {
     #[cfg(target_arch = "wasm32")]
-    pub fn _u256(op: u64, left: u64, right: u64) -> u64;
+    pub fn _u256(
+        op: u64,
+        l0: u64,
+        l1: u64,
+        l2: u64,
+        l3: u64,
+        r0: u64,
+        r1: u64,
+        r2: u64,
+        r3: u64,
+    ) -> u64;
 }
 
 #[cfg(target_arch = "wasm32")]
 #[inline]
-fn __u256(op: u64, left: u64, right: u64) -> u64 {
-    unsafe { _u256(op, left, right) }
+fn __u256(op: u64, l0: u64, l1: u64, l2: u64, l3: u64, r0: u64, r1: u64, r2: u64, r3: u64) -> u64 {
+    unsafe { _u256(op, l0, l1, l2, l3, r0, r1, r2, r3) }
 }
 
-#[cfg(not(target_arch = "wasm32"))]  
-fn _u256(op: u64, left: u64, right: u64) -> u64 {
-    let l: U256 = remember!(left);
-    let r: U256 = remember!(right);
-    let l_buf = primitive::from_u256(&l);
-    let r_buf = primitive::from_u256(&r);
+#[cfg(not(target_arch = "wasm32"))]
+fn _u256(op: u64, l0: u64, l1: u64, l2: u64, l3: u64, r0: u64, r1: u64, r2: u64, r3: u64) -> u64 {
+    macro_rules! as_u256 {
+        ($l0: ident, $l1: ident, $l2: ident, $l3: ident) => {{
+            [
+                ($l0 >> 32) as u32,
+                $l0 as u32,
+                ($l1 >> 32) as u32,
+                $l1 as u32,
+                ($l2 >> 32) as u32,
+                $l2 as u32,
+                ($l3 >> 32) as u32,
+                $l3 as u32,
+            ]
+        }};
+    }
 
-    let out = 
-    match op {
-        0 => primitive::add(&l_buf, &r_buf),
-        1 => primitive::sub(&l_buf, &r_buf),
-        2 => primitive::mul(&l_buf, &r_buf),  
-        3 => primitive::div_mod(&l_buf, &r_buf).0,  
-        4 => primitive::div_mod(&l_buf, &r_buf).1,
-        _ => panic!()
+    let l_buf = as_u256!(l0, l1, l2, l3);
+    let r_buf = as_u256!(r0, r1, r2, r3);
+
+    let out = match op as u32 {
+        u256_op::SUM => forget!(U512(primitive::add(&l_buf, &r_buf))),
+        u256_op::SUB => forget!(U256(primitive::sub(&l_buf, &r_buf))),
+        u256_op::MUL => forget!(U512(primitive::mul(&l_buf, &r_buf))),
+        u256_op::DIV => forget!(U256(primitive::div_mod(&l_buf, &r_buf).0)),
+        u256_op::MOD => forget!(U256(primitive::div_mod(&l_buf, &r_buf).1)),
+        _ => panic!(),
     };
 
-    core::mem::forget(l);
-    core::mem::forget(r);
-    let o = primitive::to_u256(&out);
-    forget!(o)
+    out
 }
 
-#[cfg(not(target_arch = "wasm32"))]  
+#[cfg(not(target_arch = "wasm32"))]
 #[inline]
-fn __u256(op: u64, left: u64, right: u64) -> u64 {
-    _u256(op, left, right)
+fn __u256(op: u64, l0: u64, l1: u64, l2: u64, l3: u64, r0: u64, r1: u64, r2: u64, r3: u64) -> u64 {
+    _u256(op, l0, l1, l2, l3, r0, r1, r2, r3)
 }
 
 impl Default for U256 {
@@ -85,21 +134,32 @@ impl FromStr for U256 {
             r = &r + &(&n * &base);
             base = &base * &ten;
         }
-        return Ok(r);   
+        return Ok(r);
     }
 }
 
-enum Op {
-    SUM = 0,
-    SUB = 1,
-    MUL = 2,
-    DIV = 3,
-    MOD = 4   
+mod u256_op {
+    pub const SUM: u32 = 0;
+    pub const SUB: u32 = 1;
+    pub const MUL: u32 = 2;
+    pub const DIV: u32 = 3;
+    pub const MOD: u32 = 4;
 }
 
 #[derive(Clone, Eq, Ord)]
-pub struct U256 {
-    data: Vec<u8>,
+pub struct U256(pub [u32; U256_MAGS]);
+pub struct U512(pub [u32; U512_MAGS]);
+
+impl U512 {
+    pub fn to_u256(&self) -> U256 {
+        let mut o: [u32; U256_MAGS] = [0; U256_MAGS];
+        o.copy_from_slice(&self.0[U256_MAGS..]);
+        return U256(o);
+    }
+
+    pub fn u64(&self) -> u64 {
+        ((self.0[U512_MAGS - 2] as u64) << 32) | (self.0[U512_MAGS - 1] as u64)
+    }
 }
 
 impl core::fmt::Display for U256 {
@@ -116,46 +176,30 @@ impl core::fmt::Debug for U256 {
 
 impl PartialEq for U256 {
     fn eq(&self, other: &U256) -> bool {
-        if self.data.len() > other.data.len() {
-            return false;
-        }
-        if self.data.len() < other.data.len() {
-            return false;
-        }        
-
-        for i in 0..self.data.len() {
-            if self.data[i] != other.data[i] {
+        for i in 0..self.0.len() {
+            if self.0[i] != other.0[i] {
                 return false;
-            }            
+            }
         }
 
-        return true;      
-    }    
+        return true;
+    }
 }
 
 impl PartialOrd for U256 {
-
     fn partial_cmp(&self, other: &U256) -> Option<Ordering> {
-        if self.data.len() > other.data.len() {
-            return Some(Ordering::Greater);
-        }
-        if self.data.len() < other.data.len() {
-            return Some(Ordering::Less);
-        }        
-
-        for i in 0..self.data.len() {
-            if self.data[i] > other.data[i] {
+        for i in 0..self.0.len() {
+            if self.0[i] > other.0[i] {
                 return Some(Ordering::Greater);
             }
-            if self.data[i] < other.data[i] {
+            if self.0[i] < other.0[i] {
                 return Some(Ordering::Less);
-            }            
+            }
         }
 
         Some(Ordering::Equal)
     }
 }
-
 
 fn to_string(s: &U256) -> String {
     let mut ret = String::new();
@@ -165,7 +209,7 @@ fn to_string(s: &U256) -> String {
     let mut n = s.clone();
 
     if n.is_zero() {
-        return "0".to_string()
+        return "0".to_string();
     }
     while !n.is_zero() {
         let div = &n / &base;
@@ -173,389 +217,388 @@ fn to_string(s: &U256) -> String {
         n = div;
         ret.insert(0, CHARS.as_bytes()[m.u64() as usize] as char);
     }
-    return ret
+    return ret;
 }
 
+fn add_overflow(_: &U256, _: &U256, o: &U512) -> bool {
+    o.0[U256_MAGS - 1] != 0
+}
+
+fn sub_overflow(left: &U256, right: &U256, _: &U256) -> bool {
+    right > left
+}
+
+fn mul_overflow(left: &U256, right: &U256, z: &U512) -> bool {
+    !is_zero(&z.0[..U256_MAGS])
+}
+
+fn div_overflow(left: &U256, right: &U256, z: &U256) -> bool {
+    right.is_zero()
+}
+
+macro_rules! call_u256 {
+    ($op: expr, $l: ident, $r: ident) => {
+        __u256(
+            $op as u64,
+            ($l.0[0] as u64) << 32 | ($l.0[1] as u64),
+            ($l.0[2] as u64) << 32 | ($l.0[3] as u64),
+            ($l.0[4] as u64) << 32 | ($l.0[5] as u64),
+            ($l.0[6] as u64) << 32 | ($l.0[7] as u64),
+            ($r.0[0] as u64) << 32 | ($r.0[1] as u64),
+            ($r.0[2] as u64) << 32 | ($r.0[3] as u64),
+            ($r.0[4] as u64) << 32 | ($r.0[5] as u64),
+            ($r.0[6] as u64) << 32 | ($r.0[7] as u64),
+        );
+    };
+}
 
 // overflow check
 macro_rules! impl_op {
-    ($tr: ident, $fn: ident, $op: expr, $overflow: ident) => {
+    ($tr: ident, $fn: ident, $op: expr, $out: ident, $overflow: ident) => {
         impl<'a> $tr for &'a U256 {
-            type Output = U256;    
-        
+            type Output = U256;
+
             fn $fn(self, rhs: &'a U256) -> U256 {
-                let p = __u256($op as u64, forget!(self.raw_clone()), forget!(rhs.raw_clone()));
-                let o: U256 = remember!(p);
-                if $overflow(self, rhs, &o) {
-                    panic!("math overflow for op {}", $op as u8);
+                let p = call_u256!($op, self, rhs);
+                let o: $out = remember!(p);
+                if $overflow(self, &rhs, &o) {
+                    panic!("math overflow for op {}", $op);
                 }
-                o
+                o.into()
             }
         }
 
         impl<'a> $tr<U256> for &'a U256 {
-            type Output = U256;    
-        
+            type Output = U256;
+
             fn $fn(self, rhs: U256) -> U256 {
-                let p = __u256($op as u64, forget!(self.raw_clone()), forget!(rhs.raw_clone()));
-                let o = remember!(p);
+                let p = call_u256!($op, self, rhs);
+                let o: $out = remember!(p);
                 if $overflow(self, &rhs, &o) {
-                    panic!("math overflow for op {}", $op as u8);
+                    panic!("math overflow for op {}", $op);
                 }                
-                o
+                o.into()
             }
-        }        
-        
+        }
+
         impl<'a> $tr<&'a U256> for U256 {
-            type Output = U256;  
-        
-            fn $fn(self, rhs: &'a U256) -> U256 {     
-                let p = __u256($op as u64, forget!(self.raw_clone()), forget!(rhs.raw_clone()));
-                let o: U256 = remember!(p);
-                if $overflow(&self, rhs, &o) {
-                    panic!("math overflow for op {}", $op as u8);
-                }                   
-                o
-            }
-        }     
-        
-        impl $tr for U256 {
-            type Output = U256;  
-        
-            fn $fn(self, rhs: U256) -> U256 {              
-                let p = __u256($op as u64, forget!(self.raw_clone()), forget!(rhs.raw_clone()));
-                let o: U256 = remember!(p);
+            type Output = U256;
+
+            fn $fn(self, rhs: &'a U256) -> U256 {
+                let p = call_u256!($op, self, rhs);
+                let o: $out = remember!(p);
                 if $overflow(&self, &rhs, &o) {
-                    panic!("math overflow for op {}", $op as u8);
-                }                   
-                o
+                    panic!("math overflow for op {}", $op);
+                }                
+                o.into()
             }
-        }          
+        }
+
+        impl $tr for U256 {
+            type Output = U256;
+
+            fn $fn(self, rhs: U256) -> U256 {
+                let p = call_u256!($op, self, rhs);
+                let o: $out = remember!(p);
+                if $overflow(&self, &rhs, &o) {
+                    panic!("math overflow for op {}", $op);
+                }
+                o.into()
+            }
+        }
     };
 }
 
-fn add_over_flow(left: &U256, right: &U256, out: &U256) -> bool {
-    out < left || out < right
-}
+impl_op!(Add, add, u256_op::SUM, U512, add_overflow);
+impl_op!(Sub, sub, u256_op::SUB, U256, sub_overflow);
+impl_op!(Mul, mul, u256_op::MUL, U512, mul_overflow);
+impl_op!(Div, div, u256_op::DIV, U256, div_overflow);
+impl_op!(Rem, rem, u256_op::MOD, U256, div_overflow);
 
-fn sub_over_flow(left: &U256, right: &U256, out: &U256) -> bool {
-    right > left
-}
-
-fn mul_over_flow(left: &U256, right: &U256, out: &U256) -> bool {
-    if left.is_zero() {
-        false
-    } else {
-        &(out / left) != right
+impl From<U512> for U256 {
+    fn from(o: U512) -> U256 {
+        let mut v = ZEROS;
+        v.copy_from_slice(&o.0[U256_MAGS..]);
+        U256(v)
     }
 }
 
-fn div_over_flow(left: &U256, right: &U256, out: &U256) -> bool {
-    right.is_zero()
-}
-
-impl_op!(Add, add, Op::SUM, add_over_flow);
-impl_op!(Sub, sub, Op::SUB, sub_over_flow);
-impl_op!(Mul, mul, Op::MUL, mul_over_flow);
-impl_op!(Div, div, Op::DIV, div_over_flow);
-impl_op!(Rem, rem, Op::MOD, div_over_flow);
-
-
 impl From<u64> for U256 {
     fn from(o: u64) -> U256 {
-        let bytes: [u8; 8] = o.to_be_bytes();
-        U256::new(trim_zeros!(bytes))
+        let mut mag = ZEROS;
+        mag[7] = o as u32;
+        mag[6] = (o >> 32) as u32;
+        U256(mag)
     }
 }
 
 impl U256 {
-    // should forget
-    pub(crate) fn raw_clone(&self) -> U256{
-        let (x, y) = (self.data.as_ptr() as u64, self.data.len() as u64);
-        let v = remember_bytes(x, y);
-        U256 {
-            data: v
-        }
-    }
-
-    pub fn from_slice(s: &[u8]) -> U256 {
-        U256 {
-            data: trim_zeros!(s)
-        }
-    }
-
     pub fn max() -> U256 {
-        U256 {
-            data: vec![0xffu8; 32]
-        }
+        U256(MAX_U256)
     }
 
     pub fn pow(&self, o: u64) -> U256 {
         let mut ret = U256::one();
-    
-        for _ in 0..o{
-            ret = &ret * self
+
+        for _ in 0..o {
+            ret = &ret * self;
         }
-        ret      
+        ret
     }
 
-    pub fn new(v: Vec<u8>) -> U256 {
-        U256 {
-            data: v
-        }        
-    }  
+    pub fn from_mag(mag: &[u32]) -> U256 {
+        assert!(mag.len() <= U256_MAGS, "u256 overflow");
+        let mut d = ZEROS;
+        d[U256_MAGS - mag.len()..].copy_from_slice(mag);
+        U256(d)
+    }
 
-    pub(crate) fn __peek(&self) -> (u64, u64){
-        (self.data.as_ptr() as u64, self.data.len() as u64)
-    }    
+    pub fn new(data: [u32; U256_MAGS]) -> U256 {
+        U256(data)
+    }
 
-    pub(crate) fn as_slice(&self) -> &[u8]{
-        &self.data
-    }       
+    pub(crate) fn to_vec(&self) -> Vec<u8> {
+        let b = self.bytes32();
+        trim_zeros!(b)
+    }
 
     pub fn zero() -> U256 {
-        U256 {
-            data: Vec::new()
-        }
+        U256(ZEROS)
     }
 
     pub fn one() -> U256 {
-        U256 {
-            data: vec![1u8]
-        }
+        let mut o = ZEROS;
+        o[U256_MAGS - 1] = 1;
+        U256(o)
     }
 
     pub fn u64(&self) -> u64 {
-        let mut v = [0u8; 8];
-        let i = self.data.len();
-        (&mut v[8-i..]).copy_from_slice(&self.data);
-        u64::from_be_bytes(v)
+        ((self.0[U256_MAGS - 2] as u64) << 32) | (self.0[U256_MAGS - 1] as u64)
     }
-
 
     pub fn is_zero(&self) -> bool {
-        self.data.len() == 0
-    }
-
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-
-    pub fn bytes32(&self) -> Vec<u8> {
-        let mut r: Vec<u8> = vec![0; 32];
-        &r[32 - self.data.len()..].copy_from_slice(self.data());
-        r
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]  
-mod primitive {
-    // overflow check
-    pub(crate) fn is_overflow(x: u64, y: u64, add_one: bool) -> bool {
-        let highest_bit = 1u64 << 63;
-        let mask = !highest_bit;
-        (highest_bit & x != 0 && highest_bit & y != 0)
-        ||
-        (
-            (highest_bit & x != 0 || highest_bit & y != 0) 
-            &&
-            (x & mask) + (y & mask) + (add_one as u64) >= highest_bit
-        )
-    }
-
-    pub(crate) fn from_u256(x: &super::U256) -> [u64; 4] {
-        let mut out: [u64; 4] = [0u64; 4];
-        let mut tmp: [u8; 32] = [0u8; 32];
-        tmp[(32 - x.as_slice().len())..].copy_from_slice(x.as_slice());
-        
-        for i in 0..out.len() {
-            let mut be = [0u8; 8];
-            be.copy_from_slice(&tmp[i*8..i*8 + 8]);
-            out[i] = u64::from_be_bytes(be);
-        }
-
-        out
-    }
-
-    pub(crate) fn to_u256(x: &[u64]) -> super::U256{
-        let mut tmp: [u8; 32] = [0u8; 32];
-
-        for i in 0..x.len() {
-            let be = x[i].to_be_bytes();
-            tmp[i*8..i*8 + 8].copy_from_slice(&be);
-        }
-
-        super::U256::new(trim_zeros!(tmp))
-    }
-
-    pub(crate) fn add(l: &[u64], r: &[u64]) -> [u64; 4] {
-        let mut overflow: bool = false;
-        let mut out: [u64; 4] = [0u64; 4];
-
-        for i in (0usize..4usize).rev() {
-            out[i] = unsafe { l[i].unchecked_add(r[i]).unchecked_add(overflow as u64) };
-            overflow = is_overflow(l[i], r[i], overflow);
-        }
-        out
-    }    
-
-    pub(crate) fn sub(l: &[u64], r: &[u64]) -> [u64; 4] {
-        let mut neg = [0u64; 4];
-    
-        for i in 0..neg.len() {
-            neg[i] = !r[i];
-        }
-    
-        let mut one = [0u64; 4];
-        one[3] = 1;
-    
-        add(l, &add(&neg, &one))
-    }    
-
-    pub(crate) fn is_zero(x: &[u64]) -> bool{
-        for i in x.iter().rev() {
-            if *i != 0 {
+        for i in 0..U256_MAGS {
+            if self.0[i] != 0 {
                 return false;
             }
         }
         true
     }
 
-    macro_rules! last_bit {
-        ($slice: expr) => {
-            $slice[3] & 1 != 0
-        };
+    pub fn bytes32(&self) -> Vec<u8> {
+        let mut v: Vec<u8> = Vec::new();
+        for i in 0..U256_MAGS {
+            v.extend_from_slice(&self.0[i].to_be_bytes())
+        }
+        v
+    }
+
+    pub fn checked_add(&self, other: &U256) -> U512 {
+        let p = call_u256!(u256_op::SUM, self, other);
+        let o: U512 = remember!(p);
+        o         
+    }
+
+    pub fn checked_mul(&self, other: &U256) -> U512 {
+        let p = call_u256!(u256_op::MUL, self, other);
+        let o: U512 = remember!(p);
+        o         
     }    
+}
 
-    fn lshift(u: &mut [u64]) {
-        let highest_bit = 1u64 << 63;
-    
-        for i in 0..u.len() {
-            u[i] = u[i] << 1;
-            if  i + 1 < u.len() {
-                u[i] |= (u[i + 1] & highest_bit) >> 63;
-            }        
-        }    
-    }
-    
-    fn rshift(u: &mut [u64]) {    
-        for i in (0..u.len()).rev() {
-            u[i] = u[i] >> 1;
-            if i >= 1 {
-                u[i] |= (u[i - 1] & 0x01) << 63
-            }        
+pub(crate) fn is_zero(x: &[u32]) -> bool {
+    for i in x.iter().rev() {
+        if *i != 0 {
+            return false;
         }
     }
+    true
+}
 
-    pub(crate) fn mul(_l: &[u64], _r: &[u64]) -> [u64; 4]{
-        let mut ret = [0u64; 4];
-        let mut r = [0u64; 4];
-        let mut l = [0u64; 4];    
-        r.copy_from_slice(_r);
-        l.copy_from_slice(_l);
-    
-        while !is_zero(&r) {
-            let n = last_bit!(&r);
-            if n {
-                ret = add(&ret, &l);
+#[cfg(not(target_arch = "wasm32"))]
+mod primitive {
+    use super::{AsU256, ToU256};
+    use super::{U256_MAGS, U512_MAGS, ZEROS};
+
+    pub(crate) fn add(l: &[u32], r: &[u32]) -> [u32; U512_MAGS] {
+        let mut carry: u64 = 0;
+        let mut out: [u32; U512_MAGS] = [0; U512_MAGS];
+
+        for i in (0..U256_MAGS).rev() {
+            let added = (l[i] as u64) + (r[i] as u64) + carry as u64;
+            out[U256_MAGS + i] = added as u32;
+            carry = added >> 32;
+        }
+        out
+    }
+
+    pub(crate) fn sub(l: &[u32], r: &[u32]) -> [u32; U256_MAGS] {
+        let mut neg = ZEROS;
+
+        for i in 0..neg.len() {
+            neg[i] = !r[i];
+        }
+
+        let mut one = ZEROS;
+        one[super::U256_MAGS - 1] = 1;
+        let mut tmp = ZEROS;
+        // tmp = 1 + neg(right)
+        tmp.copy_from_slice(add(&neg, &one).as_u256());
+        // tmp = left + (1 + neg(right))
+        let mut out = ZEROS;
+        out.copy_from_slice(add(l, &tmp).as_u256());
+        out
+    }
+
+    pub(crate) fn mul(l: &[u32], r: &[u32]) -> [u32; U512_MAGS] {
+        let x = trim_zeros!(l);
+        let y = trim_zeros!(r);
+        if x.len() == 0 || y.len() == 0 {
+            return [0; U512_MAGS];
+        }
+
+        let z = uncheck_mul(&x, &y);
+        let mut out: [u32; U512_MAGS] = [0; U512_MAGS];
+        out[U512_MAGS - z.len()..].copy_from_slice(&z);
+        out
+    }
+
+    // perform multiplication on non-zero, non zero prefixed mag
+    pub(crate) fn uncheck_mul(x: &[u32], y: &[u32]) -> Vec<u32> {
+        let x_len = x.len();
+        let y_len = y.len();
+        let mut z: Vec<u32> = vec![0; x_len + y_len];
+
+        let mut carry: u64 = 0;
+        let mut j = (y_len - 1) as i32;
+        let mut k = (y_len + x_len - 1) as i32;
+
+        while j >= 0 {
+            let product = (y[j as usize] as u64) * (x[x_len - 1] as u64) + carry;
+            z[k as usize] = product as u32;
+            carry = product >> 32;
+            j -= 1;
+            k -= 1;
+        }
+
+        z[x_len - 1] = carry as u32;
+        let mut i = (x_len as i32) - 2;
+
+        while i >= 0 {
+            carry = 0;
+            j = (y_len as i32) - 1;
+            k = (y_len as i32) + i;
+
+            while j >= 0 {
+                let product = (y[j as usize] as u64) * (x[i as usize] as u64)
+                    + (z[k as usize] as u64)
+                    + carry;
+                z[k as usize] = product as u32;
+                carry = product >> 32;
+                j -= 1;
+                k -= 1;
             }
-            lshift(&mut l);
-            rshift(&mut r);
+
+            z[i as usize] = carry as u32;
+            i -= 1;
         }
-        ret
-    }   
-    
-    fn one_lshift(i: usize) -> [u64; 4] {
-        let count = i / 64;
-        let offset = i % 64;
-        let mut r = [0u64; 4];
-        r[3 - count] = 1 << offset;
+
+        z
+    }
+
+    fn one_lshift(i: usize) -> [u32; U256_MAGS] {
+        let count = i / 32;
+        let offset = i % 32;
+        let mut r = ZEROS;
+        r[7 - count] = 1 << offset;
         r
     }
-    
-    fn lshift_n(_l: &[u64], n: usize) -> [u64; 4] {
-    
-        let count = n / 64;
-        let offset = n % 64;
-        let mut r = [0u64; 4];
-    
-        let mut u = [0u64; 4];
-        u.copy_from_slice(_l);
-    
-    
-        for i in (0..4).rev() {
-            if i >= count {
-                let j = i - count; // i = j + count 
-                let m = u[i] << offset; // r[j] |= u[j+count] << offset
-                r[j] |= m;
-            }      
-            
-            if i > count && offset != 0{
-                let j = i - count;
-                let mask = 0xffffffffffffffff << (64 - offset);
-                let x =  (u[i] & mask) >> (64 - offset);
-                r[j - 1] |= x; // r[j - 1] |= (u[j + count] & mask) >> (64 - offset)
-            }        
+
+    struct MutMag<'a>(&'a mut [u32]);
+
+    impl<'a> MutMag<'a> {
+        fn right_shift(&'a mut self) {
+            for i in (0..self.0.len()).rev() {
+                self.0[i] = self.0[i] >> 1;
+                if i >= 1 {
+                    self.0[i] |= (self.0[i - 1] & 0x01) << 31
+                }
+            }
         }
-        return r
     }
-    
-    fn rshift_n(_l: &[u64], n: usize) -> [u64; 4] {
-    
-        let count = n / 64;
-        let offset = n % 64;
-    
-        let mut r = [0u64; 4];
-        let mut u = [0u64; 4];
-        u.copy_from_slice(_l);
-    
-        for i in 0..u.len() {
-            let j = i + count;
-            if j < r.len() {
-                let m = u[i] >> offset;
-                r[j] |= m;
-            }   
-            if  j + 1 < r.len() && offset != 0{
-                let mask = 0xffffffffffffffff >> (64 - offset);
-                let x = (u[i] & mask) << (64 - offset);
-                r[j + 1] |= x;
-            }             
+
+    fn right_shift_n(x: &[u32], n: u32) -> [u32; U256_MAGS] {
+        let mut r = ZEROS;
+        let c = (n / 32) as usize;
+        let off = (n % 32) as usize;
+
+        for i in 0..U256_MAGS {
+            let i = i as usize;
+            if i + c < U256_MAGS {
+                r[i + c] = x[i];
+            }
         }
+
+        if off == 0 {
+            return r;
+        }
+
+        for i in (0..U256_MAGS).rev() {
+            r[i] = r[i] >> off;
+            if i > 0 {
+                r[i] |= (r[i - 1] & (!(0xffffffffu32 << off))) << (32 - off);
+            }
+        }
+
         r
-    } 
-    
-    pub(crate) fn div_mod(_l: &[u64], _r: &[u64]) -> ([u64; 4], [u64;4]) {
-        assert!(!is_zero(_r), "divided by zero");
-    
-        let mut quo = [0u64; 4];
-        let mut divisor = [0u64; 4];
-        let mut dividend = [0u64; 4];    
-        divisor.copy_from_slice(_r);
-        dividend.copy_from_slice(_l);
-    
+    }
+
+    pub(crate) fn div_mod(x: &[u32], y: &[u32]) -> ([u32; U256_MAGS], [u32; U256_MAGS]) {
+        assert!(!super::is_zero(y), "divided by zero");
+
+        let mut quo = ZEROS;
+
+        let divisor = {
+            let mut d = ZEROS;
+            d.copy_from_slice(y);
+            d
+        };
+
+        let mut dividend = {
+            let mut d = ZEROS;
+            d.copy_from_slice(x);
+            d
+        };
+
+        let mut div = [0u32; U512_MAGS];
+        div[..U256_MAGS].copy_from_slice(y);
+
         for i in (0..256).rev() {
-            if cmp(&rshift_n(&dividend, i), &divisor) >= 0 {
-                quo = add(&quo, &one_lshift(i));
-                dividend =  {
-                    let to_sub = lshift_n(&divisor, i);
+            let mut d = MutMag(&mut div);
+            d.right_shift();
+            if cmp(&right_shift_n(&dividend, i), &divisor) >= 0 {
+                quo = add(&quo, &one_lshift(i as usize)).to_u256();
+                dividend = {
+                    let to_sub = &div[U256_MAGS..];
                     assert!(cmp(&dividend, &to_sub) >= 0, "divided overflow");
                     sub(&dividend, &to_sub)
                 }
             }
-        }
-    
-        (quo, dividend)
-    }    
 
-    fn cmp(_l: &[u64], _r: &[u64]) -> i32 {
-        for i in 0.._l.len() {
-            if _l[i] > _r[i] {
+        }
+
+        (quo, dividend)
+    }
+
+    fn cmp(x: &[u32], y: &[u32]) -> i32 {
+        for i in 0..U256_MAGS {
+            if x[i] > y[i] {
                 return 1;
             }
-            if _l[i] < _r[i] {
+            if x[i] < y[i] {
                 return -1;
-            }        
+            }
         }
         return 0;
-    }    
+    }
 }
