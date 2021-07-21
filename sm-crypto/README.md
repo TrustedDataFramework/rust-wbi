@@ -1,69 +1,61 @@
-<div align="center">
+# sm-crypto
 
-  <h1><code>wasm-pack-template</code></h1>
+## webpack
 
-  <strong>A template for kick starting a Rust and WebAssembly project using <a href="https://github.com/rustwasm/wasm-pack">wasm-pack</a>.</strong>
+1. allow .wasm module by experiments.asyncWebAssembly = true
 
-  <p>
-    <a href="https://travis-ci.org/rustwasm/wasm-pack-template"><img src="https://img.shields.io/travis/rustwasm/wasm-pack-template.svg?style=flat-square" alt="Build Status" /></a>
-  </p>
+```js
+const path = require('path')
+const HtmlWebpackPlugin = require('html-webpack-plugin')
 
-  <h3>
-    <a href="https://rustwasm.github.io/docs/wasm-pack/tutorials/npm-browser-packages/index.html">Tutorial</a>
-    <span> | </span>
-    <a href="https://discordapp.com/channels/442252698964721669/443151097398296587">Chat</a>
-  </h3>
-
-  <sub>Built with 🦀🕸 by <a href="https://rustwasm.github.io/">The Rust and WebAssembly Working Group</a></sub>
-</div>
-
-## About
-
-[**📚 Read this template tutorial! 📚**][template-docs]
-
-This template is designed for compiling Rust libraries into WebAssembly and
-publishing the resulting package to NPM.
-
-Be sure to check out [other `wasm-pack` tutorials online][tutorials] for other
-templates and usages of `wasm-pack`.
-
-[tutorials]: https://rustwasm.github.io/docs/wasm-pack/tutorials/index.html
-[template-docs]: https://rustwasm.github.io/docs/wasm-pack/tutorials/npm-browser-packages/index.html
-
-## 🚴 Usage
-
-### 🐑 Use `cargo generate` to Clone this Template
-
-[Learn more about `cargo generate` here.](https://github.com/ashleygwilliams/cargo-generate)
-
-```
-cargo generate --git https://github.com/rustwasm/wasm-pack-template.git --name my-project
-cd my-project
+module.exports = {
+  mode: 'development',
+  devServer: {
+    contentBase: path.join(__dirname, 'dist'),
+    compress: true,
+  },  
+  entry: './src/index.js', // input file of the JS bundle
+  output: {
+    filename: 'bundle.js', // output filename
+    path: path.resolve(__dirname, 'dist'), // directory of where the bundle will be created at
+  },
+  experiments: {
+    asyncWebAssembly: true
+  },  
+  plugins: [
+    new HtmlWebpackPlugin()
+  ],
+}
 ```
 
-### 🛠️ Build with `wasm-pack build`
+1. require this module async in your .js file
 
+```js
+async function main() {
+    const libsm = await require('@tdos/sm-crypto/sm_crypto')
+    // generate private key 
+    // 通过 sm3 生成随机私钥, 输入值是随机的 0x 开头的十六进制串，
+    const privateKey = libsm.sm3('0x00')
+    console.log(`privateKey = ${privateKey}`)
+
+    // 将私钥转成公钥匙并且压缩
+    const publicKey = libsm.sm2_pk_from_sk(privateKey, true)
+    console.log(`publicKey = ${publicKey}`)
+
+    // sign
+    // 对消息内容进行签名，消息内容必须是 0x 开头的十六进制串
+    const msg = '0xffff'
+    // 签名需要生成随机种子
+    const seed = 128n
+    const sig = libsm.sm2_sign(seed, privateKey, msg)
+    console.log(`sig = ${sig}`)
+
+    // verify
+    // 验证签名, 验证签名也需要随机种子
+    const verified = libsm.sm2_verify(seed + 2n, msg, publicKey, sig)
+    console.log(`verify result = ${verified}`)
+}
+
+
+main()
 ```
-wasm-pack build
-```
-
-### 🔬 Test in Headless Browsers with `wasm-pack test`
-
-```
-wasm-pack test --headless --firefox
-```
-
-### 🎁 Publish to NPM with `wasm-pack publish`
-
-```
-wasm-pack publish
-```
-
-## 🔋 Batteries Included
-
-* [`wasm-bindgen`](https://github.com/rustwasm/wasm-bindgen) for communicating
-  between WebAssembly and JavaScript.
-* [`console_error_panic_hook`](https://github.com/rustwasm/console_error_panic_hook)
-  for logging panic messages to the developer console.
-* [`wee_alloc`](https://github.com/rustwasm/wee_alloc), an allocator optimized
-  for small code size.
