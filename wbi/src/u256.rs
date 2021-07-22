@@ -239,7 +239,7 @@ fn div_overflow(left: &U256, right: &U256, z: &U256) -> bool {
 macro_rules! call_u256 {
     ($op: expr, $l: ident, $r: ident) => {
         __u256(
-            $op as u64,
+            ($op) as u64,
             ($l.0[0] as u64) << 32 | ($l.0[1] as u64),
             ($l.0[2] as u64) << 32 | ($l.0[3] as u64),
             ($l.0[4] as u64) << 32 | ($l.0[5] as u64),

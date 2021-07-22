@@ -26,7 +26,6 @@ extern crate num_bigint;
 extern crate num_integer;
 extern crate num_traits;
 extern crate yasna;
-extern crate rust_wbi;
 
 #[macro_use]
 extern crate lazy_static;

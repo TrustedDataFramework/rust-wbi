@@ -95,6 +95,7 @@ pub mod context;
 
 use alloc::{vec::Vec};
 use alloc::string::*;
+use u256::U256;
 use core::mem;
 
 #[macro_export]
@@ -113,7 +114,7 @@ macro_rules! use_wbi {
 
 
         extern crate core;  
-        pub use rust_wbi::{__change_t, __malloc, __peek};     
+        pub use rust_wbi::{__change_t, __malloc, __peek, __malloc_256, __malloc_512};     
     };
 }
 
@@ -162,6 +163,48 @@ pub fn __malloc(size: u64) -> u64 {
         bytes.set_len(size as usize);
     }
     forget_bytes(bytes)
+}
+
+#[no_mangle]
+pub fn __malloc_256(a0: u64, a1: u64, a2: u64, a3: u64) -> u64 {
+    let u = [
+        (a0 >> 32) as u32,
+        a0 as u32,
+        (a1 >> 32) as u32,
+        a1 as u32,
+        (a2 >> 32) as u32,
+        a2 as u32,
+        (a3 >> 32) as u32,
+        a3 as u32,
+    ];
+
+    let u = U256::new(u);
+    forget!(u)
+}
+
+#[no_mangle]
+pub fn __malloc_512(a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64, a6: u64, a7: u64) -> u64 {
+    let u = [
+        (a0 >> 32) as u32,
+        a0 as u32,
+        (a1 >> 32) as u32,
+        a1 as u32,
+        (a2 >> 32) as u32,
+        a2 as u32,
+        (a3 >> 32) as u32,
+        a3 as u32,
+        (a4 >> 32) as u32,
+        a4 as u32,
+        (a5 >> 32) as u32,
+        a5 as u32,
+        (a6 >> 32) as u32,
+        a6 as u32,
+        (a7 >> 32) as u32,
+        a7 as u32,        
+    ];
+
+    let u = u256::U512(u);
+    forget!(u)
 }
 
 

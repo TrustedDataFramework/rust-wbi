@@ -2,7 +2,7 @@
 #![feature(default_alloc_error_handler)]
 
 use num_bigint::BigUint;
-use rust_wbi::{Bytes32, log, ret};
+use rust_wbi::{Bytes32, log, ret, u256::U256};
 use libsm::{sm2::{self, signature::Signature}, sm3::hash};
 use alloc::vec::*;
 
@@ -54,6 +54,20 @@ pub fn sm2_verify(seed: u64, message: Vec<u8>, public_key: Vec<u8>, sig: Vec<u8>
     log("6");
     r
 }
+
+
+#[no_mangle]
+pub fn add(x: U256, y: U256) -> &'static U256 {
+    // @pure
+    ret(x + y)
+}
+
+#[no_mangle]
+pub fn mul(x: U256, y: U256) -> &'static U256 {
+    // @pure
+    ret(x * y)
+}
+
 
 #[cfg(test)]
 mod test {
