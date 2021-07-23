@@ -308,6 +308,14 @@ impl SigCtx {
         curve.mul(&sk, &curve.generator())
     }
 
+    pub fn pk_from_sk_checked(&self, sk: &BigUint) -> Result<Point, Sm2Error> {
+        let curve = &self.curve;
+        if *sk >= *curve.get_n() || *sk == BigUint::zero() {
+            return Err(Sm2Error::InvalidPrivate)
+        }
+        Ok(curve.mul(&sk, &curve.generator()))
+    }
+
     pub fn load_pubkey(&self, buf: &[u8]) -> Result<Point, Sm2Error> {
         self.curve.bytes_to_point(buf)
     }

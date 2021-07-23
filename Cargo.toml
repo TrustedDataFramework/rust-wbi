@@ -3,6 +3,7 @@ members = [
     "libsm",
     "wbi",
     "sm-crypto",
+    "chain_natives",
     ".",
 ]
 
