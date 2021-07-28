@@ -1,5 +1,13 @@
 extern crate libsm;
 extern crate num_bigint;
+extern crate mlsag;
+#[macro_use]
+extern crate serde;
+
+use serde::{Serialize, Deserialize};
+
+use std::process::Output;
+use std::ptr::null;
 
 use libsm::sm2;
 use libsm::sm2::signature::Signature;
@@ -9,6 +17,14 @@ use num_bigint::BigUint;
 mod utils;
 
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    // Use `js_namespace` here to bind `console.log(..)` instead of just
+    // `log(..)`
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -40,6 +56,45 @@ trait AsHex {
 trait FromHex {
     fn from_hex(hex: &str) -> Self;
 }
+
+trait Decode<T> {
+    fn decode(&self) -> T;
+}
+
+impl <T: FromHex> Decode<T> for String {
+    fn decode(&self) -> T {
+        <T>::from_hex(&self)
+    }
+}
+
+impl <T: FromHex> Decode<Vec<T>> for Vec<JsValue> {
+    fn decode(&self) -> Vec<T> {
+        self.iter().map(|x| <T>::from_hex(&x.as_string().unwrap())).collect()
+    }
+}
+
+impl <T: FromHex> Decode<Vec<T>> for Vec<String> {
+    fn decode(&self) -> Vec<T> {
+        self.iter().map(|x| <T>::from_hex(x)).collect()
+    }
+}
+
+impl FromHex for [u8; 32] {
+    fn from_hex(hex: &str) -> Self {
+        let word = decode_hex(hex);
+        assert!(word.len() == 32, "hex len != 32");
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&word);
+        buf
+    }
+}
+
+impl FromHex for Vec<u8> {
+    fn from_hex(hex: &str) -> Self {
+        decode_hex(hex)
+    }
+}
+
 
 impl AsHex for Signature {
     fn to_hex(&self) -> String {
@@ -150,6 +205,66 @@ pub fn sm2_verify(seed: u64, message: String, public_key: String, sig: String) -
     sig_ctx.verify(&decode_hex(&message), &pk, &s)
 }
 
+#[wasm_bindgen]
+pub fn mlsag_generate_decoys(seed: u64, count: i32) -> Vec<JsValue> {
+    assert!(count >= 0, "count should >= 0");
+    let v: Vec<JsValue> = mlsag::generate_decoys(seed, count as usize)
+        .iter()
+        .map(|x| JsValue::from_str(&to_hex(x)))
+        .collect();
+        
+    v
+}
+
+#[wasm_bindgen]
+pub fn mlsag_pk_from_sk(private_key: String) -> String {
+    let word = decode_hex(&private_key);
+    assert!(word.len() == 32, "private_key.len != 32");
+    let mut buf = [0u8; 32];
+    buf.copy_from_slice(&word);
+    let pk = mlsag::pk_from_sk(buf);
+    to_hex(&pk)
+}
+
+#[wasm_bindgen]
+pub fn mlsag_generate_signer(seed: u64) -> String {
+    to_hex(&mlsag::generate_signer(seed))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MlsagSignature {
+    pub challenge: String,
+    pub responses: Vec<String>,
+    pub key_images: Vec<String>,
+}
+
+#[wasm_bindgen]
+pub fn mlsag_sign(seed: u64, sk: String, decoys: Vec<JsValue>, msg: String) -> JsValue {
+    let sk = &sk.decode();
+    let decoys: Vec<[u8; 32]> = decoys.into_iter().map(|x| x.as_string().unwrap().decode()).collect();
+    let msg: Vec<u8> = msg.decode();
+    let sig = mlsag::sign(seed, sk, &decoys, &msg);
+    let sig = MlsagSignature {
+        challenge: to_hex(&sig.0),
+        responses: sig.1.iter().map(|x| to_hex(x)).collect(),
+        key_images: sig.2.iter().map(|x| to_hex(x)).collect(),
+    };
+    JsValue::from_serde(&sig).unwrap()
+}
+
+#[wasm_bindgen]
+pub fn mlsag_verify(seed: u64, msg: String, decoys: Vec<JsValue>, sig: JsValue)-> bool {
+    unsafe {
+        let sig: MlsagSignature = sig.into_serde().unwrap();
+        let sig: ([u8; 32], Vec<[u8; 32]> , Vec<[u8; 32]> ) = (
+            sig.challenge.decode(),
+            sig.responses.decode(),
+            sig.key_images.decode(),        
+        );
+        let msg: Vec<u8> = msg.decode();
+        mlsag::verify(seed, &msg, &decoys.decode(), &sig.0, &sig.1, &sig.2)
+    }
+}
 
 #[cfg(test)]
 mod tests {

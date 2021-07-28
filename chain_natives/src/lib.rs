@@ -2,6 +2,7 @@ extern crate alloc;
 extern crate core;
 extern crate jni;
 extern crate libsm;
+extern crate mlsag;
 extern crate num_bigint;
 
 use std::ptr::null_mut;
@@ -11,6 +12,7 @@ use jni::JNIEnv;
 use libsm::sm2;
 use libsm::sm2::signature::Signature;
 use libsm::sm3::hash;
+use mlsag::member::Member;
 use num_bigint::BigUint;
 
 // These objects are what you should use as arguments to your native function.
@@ -21,9 +23,7 @@ use jni::objects::{GlobalRef, JClass, JObject, JString};
 // This is just a pointer. We'll be returning it from our function.
 // We can't return one of the objects with lifetime information because the
 // lifetime checker won't let us.
-use jni::sys::{jboolean, jbyteArray, jint, jlong, jstring};
-
-static mut state: u32 = 0;
+use jni::sys::{jarray, jboolean, jbyteArray, jint, jlong, jobjectArray, jstring};
 
 const RT_EX: &'static str = "java/lang/RuntimeException";
 
@@ -70,10 +70,14 @@ pub extern "system" fn Java_org_tdf_natives_Crypto_sm2PkFromSk(
             env.throw_new(RT_EX, e.0);
             null_mut()
         }
-    }    
+    }
 }
 
-fn sm2_pk_from_sk(env: JNIEnv, _priv: jbyteArray, _compress: jboolean) -> Result<jbyteArray, ChainErr> {
+fn sm2_pk_from_sk(
+    env: JNIEnv,
+    _priv: jbyteArray,
+    _compress: jboolean,
+) -> Result<jbyteArray, ChainErr> {
     let private_key = env.convert_byte_array(_priv)?;
     let compress = _compress != 0;
     let sig_ctx = sm2::signature::SigCtx::new();
@@ -168,7 +172,12 @@ pub extern "system" fn Java_org_tdf_natives_Crypto_sm2Sign(
     }
 }
 
-fn sm2_sign(env: JNIEnv, _seed: jlong, _priv: jbyteArray, _msg: jbyteArray) -> Result<jbyteArray, ChainErr> {
+fn sm2_sign(
+    env: JNIEnv,
+    _seed: jlong,
+    _priv: jbyteArray,
+    _msg: jbyteArray,
+) -> Result<jbyteArray, ChainErr> {
     libsm::seed(_seed as u64);
     let private_key = env.convert_byte_array(_priv)?;
     let message = env.convert_byte_array(_msg)?;
@@ -188,26 +197,67 @@ fn sm2_sign(env: JNIEnv, _seed: jlong, _priv: jbyteArray, _msg: jbyteArray) -> R
 }
 
 #[no_mangle]
-pub extern "system" fn Java_org_tdf_natives_Crypto_setState(
+pub extern "system" fn Java_org_tdf_natives_Crypto_mlsagGetSk(
     env: JNIEnv,
     // this is the class that owns our
     // static method. Not going to be
     // used, but still needs to have
     // an argument slot
     _class: JClass,
-    _i: jint,
-) {
-    unsafe { state = _i as u32 }
+    _seed: jlong,
+) -> jbyteArray {
+    let sk = mlsag::mlsag::random_sk(_seed as u64);
+    match env.byte_array_from_slice(&sk) {
+        Ok(o) => o,
+        Err(_) => {
+            env.throw_new(RT_EX, "jni error");
+            null_mut()
+        }
+    }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_org_tdf_natives_Crypto_getState(
+pub extern "system" fn Java_org_tdf_natives_Crypto_mlsagPkFromSk(
     env: JNIEnv,
     // this is the class that owns our
     // static method. Not going to be
     // used, but still needs to have
     // an argument slot
     _class: JClass,
-) -> jint {
-    unsafe { state as jint }
+    _privateKey: jbyteArray,
+    _compress: jboolean
+) -> jbyteArray {
+    null_mut()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_tdf_natives_Crypto_mlsagSign(
+    env: JNIEnv,
+    // this is the class that owns our
+    // static method. Not going to be
+    // used, but still needs to have
+    // an argument slot
+    _class: JClass,
+    _seed: jlong,
+    _privateKey: jobjectArray,
+    _compress: jboolean
+) -> jbyteArray {
+    null_mut()
+}
+
+fn mlsag_sign(env: JNIEnv, _seed: jlong, _privateKey: jobjectArray, msg: jbyteArray) -> Result<jbyteArray, ChainErr> {
+    let cnt = env.get_array_length(_privateKey)? as usize;
+    let mut v: Vec<Vec<u8>> = Vec::with_capacity(cnt);
+
+    for i in 0..cnt {
+        let _priv = env.get_object_array_element(_privateKey, i as i32)?;
+        let _priv_bytes = env.convert_byte_array(_priv.into_inner())?;
+        v.push(_priv_bytes)
+    }
+
+    let signer = Member::new_signer_from_bytes(_seed as u64, v);
+    let mut mlsag = mlsag::mlsag::Mlsag::new();
+
+
+    Ok(null_mut())
 }

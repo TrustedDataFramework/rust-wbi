@@ -4,6 +4,7 @@ members = [
     "wbi",
     "sm-crypto",
     "chain_natives",
+    "mlsag",
     ".",
 ]
 

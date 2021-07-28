@@ -1,0 +1,25 @@
+[package]
+name = "mlsag"
+version = "0.3.0"
+authors = ["Kevaundray Wedderburn <kevtheappdev@gmail.com"]
+edition = "2018"
+description = "Multilayer Linkable Spontaneous Anonymous Group construction"
+license = "BSD-3-Clause"
+repository = "https://github.com/crate-crypto/MLSAG"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies.curve25519-dalek]
+version = "1"
+default-features = false
+features = ["nightly", "u64_backend"]
+
+[dependencies]
+rand = { version = "0.6", default-features = false } 
+sha2 = { version = "0.8", default-features = false }
+merlin = { version = "1.1", default-features = false }
+
+[profile.release]
+debug = true
+
